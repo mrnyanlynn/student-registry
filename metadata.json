@@ -1,0 +1,5 @@
+{
+  "name": "Student Registry",
+  "description": "A modern, clean student management system with real-time search, detailed registration forms, and CSV export capabilities.",
+  "requestFramePermissions": []
+}
