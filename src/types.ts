@@ -11,6 +11,7 @@ export interface Student {
   guardian_name: string;
   notes: string;
   created_at: string;
+  user_id?: string;
 }
 
 export type NewStudent = Omit<Student, 'id' | 'created_at'>;

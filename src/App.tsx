@@ -28,11 +28,14 @@ import {
   BarChart3,
   Filter,
   ArrowUpDown,
+  RefreshCw,
   PlusCircle,
   LogOut,
   LogIn,
   Mail,
-  Lock
+  Lock,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -56,14 +59,32 @@ import { Language, translations } from './i18n';
 
 // --- Components ---
 
-const Auth = ({ onAuthSuccess, lang, setLang }: { onAuthSuccess: () => void, lang: Language, setLang: (l: Language) => void }) => {
+const Auth = ({ onAuthSuccess, lang, setLang, darkMode, setDarkMode }: { 
+  onAuthSuccess: () => void, 
+  lang: Language, 
+  setLang: (l: Language) => void,
+  darkMode: boolean,
+  setDarkMode: (d: boolean) => void
+}) => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const t = translations[lang];
+
+  useEffect(() => {
+    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+      console.error('Missing Supabase configuration');
+      // We can't use showToast here because it might not be initialized yet or context issue
+      // But we can set a global error or just log it.
+      // Actually showToast is defined in App component scope, so it's fine.
+      // But wait, showToast is defined inside App component? No, it's likely a helper or hook.
+      // Let's check where showToast comes from.
+    }
+  }, []);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,30 +96,43 @@ const Auth = ({ onAuthSuccess, lang, setLang }: { onAuthSuccess: () => void, lan
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       } else {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        alert(t.checkEmail);
+        if (!data.session) {
+          alert(t.checkEmail);
+        }
       }
       onAuthSuccess();
     } catch (err: any) {
-      setError(err.message);
+      console.error('Auth error:', err);
+      if (err.message === 'Failed to fetch') {
+        setError('Network error: Cannot reach Supabase. Please check your connection or VPN.');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 relative">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-4 relative transition-colors duration-300">
       <div className="absolute top-8 right-8 flex gap-2">
         <button 
+          onClick={() => setDarkMode(!darkMode)}
+          className={`p-2 rounded-lg border transition-all ${darkMode ? 'bg-slate-800 text-yellow-400 border-slate-700' : 'bg-white text-slate-400 border-slate-200'}`}
+        >
+          {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        </button>
+        <button 
           onClick={() => setLang('en')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${lang === 'en' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${lang === 'en' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'}`}
         >
           EN
         </button>
         <button 
           onClick={() => setLang('mm')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${lang === 'mm' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${lang === 'mm' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'}`}
         >
           MM
         </button>
@@ -107,25 +141,25 @@ const Auth = ({ onAuthSuccess, lang, setLang }: { onAuthSuccess: () => void, lan
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-100 p-8"
+        className="w-full max-w-md bg-white dark:bg-slate-800 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700 p-8 transition-colors duration-300"
       >
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-200">
+          <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-200 dark:shadow-none">
             <GraduationCap className="w-8 h-8 text-white" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900">{t.appName}</h2>
-          <p className="text-slate-500 mt-2">{isLogin ? t.login : t.tagline}</p>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{t.appName}</h2>
+          <p className="text-slate-500 dark:text-slate-400 mt-2">{isLogin ? t.login : t.tagline}</p>
         </div>
 
         <form onSubmit={handleAuth} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t.email}</label>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t.email}</label>
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input 
                 type="email" 
                 required
-                className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-900 dark:text-white placeholder:text-slate-400"
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -133,13 +167,13 @@ const Auth = ({ onAuthSuccess, lang, setLang }: { onAuthSuccess: () => void, lan
             </div>
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t.password}</label>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t.password}</label>
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input 
                 type={showPassword ? "text" : "password"} 
                 required
-                className="w-full pl-12 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                className="w-full pl-12 pr-12 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-900 dark:text-white placeholder:text-slate-400"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -147,17 +181,37 @@ const Auth = ({ onAuthSuccess, lang, setLang }: { onAuthSuccess: () => void, lan
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
           </div>
 
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${rememberMe ? 'bg-indigo-600 border-indigo-600' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 group-hover:border-indigo-400'}`}>
+                {rememberMe && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+              </div>
+              <input 
+                type="checkbox" 
+                className="hidden"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+              />
+              <span className="text-sm font-medium text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">{t.rememberMe}</span>
+            </label>
+            {isLogin && (
+              <button type="button" className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">
+                {t.forgotPassword}
+              </button>
+            )}
+          </div>
+
           {error && (
-            <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl flex gap-3 items-center">
+            <div className="p-3 bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-900/30 rounded-xl flex gap-3 items-center">
               <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
-              <p className="text-xs text-rose-600 font-medium">{error}</p>
+              <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">{error}</p>
             </div>
           )}
 
@@ -174,7 +228,7 @@ const Auth = ({ onAuthSuccess, lang, setLang }: { onAuthSuccess: () => void, lan
         <div className="mt-6 text-center">
           <button 
             onClick={() => setIsLogin(!isLogin)}
-            className="text-sm font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
+            className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
           >
             {isLogin ? t.noAccount : t.alreadyAccount}
           </button>
@@ -192,8 +246,8 @@ const StatsCard = ({ title, value, icon: Icon, color }: { title: string, value: 
       <Icon className="w-6 h-6 text-white" />
     </div>
     <div>
-      <p className="text-sm font-medium text-slate-500">{title}</p>
-      <h3 className="text-2xl font-bold text-slate-900">{value}</h3>
+      <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{title}</p>
+      <h3 className="text-2xl font-bold text-slate-900 dark:text-white">{value}</h3>
     </div>
   </div>
 );
@@ -230,6 +284,23 @@ export default function App() {
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
   const [loading, setLoading] = useState(true);
   const [formStep, setFormStep] = useState(1);
+  
+  // Settings State
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') === 'true');
+  const [emailNotifications, setEmailNotifications] = useState(() => localStorage.getItem('emailNotifications') === 'true');
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('darkMode', String(darkMode));
+  }, [darkMode]);
+
+  useEffect(() => {
+    localStorage.setItem('emailNotifications', String(emailNotifications));
+  }, [emailNotifications]);
 
   const [formData, setFormData] = useState<NewStudent>({
     name: '',
@@ -244,10 +315,15 @@ export default function App() {
     notes: ''
   });
 
+  const isAdmin = useMemo(() => {
+    return session?.user?.email?.toLowerCase() === 'admin@example.com';
+  }, [session]);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) {
+        // We need to pass the session explicitly because state update might be slow
         fetchStudents();
         fetchStats();
       } else {
@@ -290,8 +366,13 @@ export default function App() {
       
       if (error) throw error;
       setStudents(data || []);
-    } catch (err) {
-      showToast('Failed to load students', 'error');
+    } catch (err: any) {
+      console.error('Error fetching students:', err);
+      if (err.message === 'Failed to fetch') {
+        showToast('Network error: Cannot reach Supabase. Check your connection or VPN.', 'error');
+      } else {
+        showToast(`Failed to load students: ${err.message || 'Unknown error'}`, 'error');
+      }
     } finally {
       setLoading(false);
     }
@@ -318,8 +399,13 @@ export default function App() {
         gradeDistribution: Object.entries(gradeCounts).map(([grade, count]) => ({ grade, count })),
         recentAdmissions: Object.entries(recentAdmissions).map(([date, count]) => ({ date, count }))
       });
-    } catch (err) {
-      console.error('Failed to fetch stats', err);
+    } catch (err: any) {
+      console.error('Failed to fetch stats:', err);
+      if (err.message === 'Failed to fetch') {
+        showToast('Network error: Cannot reach Supabase stats.', 'error');
+      } else {
+        showToast(`Failed to load stats: ${err.message || 'Unknown error'}`, 'error');
+      }
     }
   };
 
@@ -331,6 +417,12 @@ export default function App() {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
+
+  useEffect(() => {
+    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+      showToast('Missing Supabase configuration. Check your .env file.', 'error');
+    }
+  }, []);
 
   const validateStep = (step: number) => {
     if (step === 1) {
@@ -422,8 +514,8 @@ export default function App() {
 
   const filteredStudents = useMemo(() => {
     let result = students.filter(s => 
-      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.enrollment_no.toLowerCase().includes(searchTerm.toLowerCase())
+      (s.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (s.enrollment_no || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     if (selectedGrade !== 'All Grades') {
@@ -431,11 +523,19 @@ export default function App() {
     }
 
     if (sortBy === 'name') {
-      result.sort((a, b) => a.name.localeCompare(b.name));
+      result.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     } else if (sortBy === 'oldest') {
-      result.sort((a, b) => new Date(a.created_at || '').getTime() - new Date(b.created_at || '').getTime());
+      result.sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return dateA - dateB;
+      });
     } else {
-      result.sort((a, b) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime());
+      result.sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return dateB - dateA;
+      });
     }
 
     return result;
@@ -444,11 +544,11 @@ export default function App() {
   const recentAdmissions = useMemo(() => {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    return students.filter(s => new Date(s.created_at) > sevenDaysAgo).length;
+    return students.filter(s => s.created_at && new Date(s.created_at) > sevenDaysAgo).length;
   }, [students]);
 
   if (!session) {
-    return <Auth onAuthSuccess={() => {}} lang={lang} setLang={setLang} />;
+    return <Auth onAuthSuccess={() => {}} lang={lang} setLang={setLang} darkMode={darkMode} setDarkMode={setDarkMode} />;
   }
 
   const exportToCSV = () => {
@@ -486,22 +586,59 @@ export default function App() {
     document.body.removeChild(link);
   };
 
+  const handleBackupDatabase = () => {
+    const dataStr = JSON.stringify(students, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `student_registry_backup_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('Database backup downloaded successfully', 'success');
+  };
+
+  const handleClearAllRecords = async () => {
+    if (!window.confirm('Are you sure you want to delete ALL student records? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('students')
+        .delete()
+        .neq('id', 0); // Delete all rows where id is not 0 (effectively all rows)
+
+      if (error) throw error;
+
+      setStudents([]);
+      setStats(null);
+      showToast('All records cleared successfully', 'success');
+    } catch (err) {
+      console.error('Error clearing records:', err);
+      showToast('Failed to clear records', 'error');
+    }
+  };
+
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-slate-50">
+    <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
       {/* Sidebar Navigation */}
-      <aside className="w-full md:w-64 bg-white border-r border-slate-200 flex flex-col h-auto md:h-screen sticky top-0 z-40">
-        <div className="p-6 flex items-center gap-3 border-b border-slate-100">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
+      <aside className="w-full md:w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col h-auto md:h-screen sticky top-0 z-40 transition-colors duration-300">
+        <div className="p-6 flex items-center gap-3 border-b border-slate-100 dark:border-slate-700">
+          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200 dark:shadow-none">
             <GraduationCap className="w-6 h-6 text-white" />
           </div>
-          <span className="font-bold text-xl tracking-tight text-slate-900">{t.appName}</span>
+          <span className="font-bold text-xl tracking-tight text-slate-900 dark:text-white">{t.appName}</span>
         </div>
         
         <nav className="flex-1 p-4 space-y-2">
           <button 
             onClick={() => setView('home')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
-              view === 'home' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+              view === 'home' 
+                ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' 
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-200'
             }`}
           >
             <Home className="w-5 h-5" />
@@ -510,7 +647,9 @@ export default function App() {
           <button 
             onClick={() => setView('dashboard')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
-              view === 'dashboard' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+              view === 'dashboard' 
+                ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' 
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-200'
             }`}
           >
             <LayoutDashboard className="w-5 h-5" />
@@ -519,7 +658,9 @@ export default function App() {
           <button 
             onClick={() => setView('settings')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
-              view === 'settings' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+              view === 'settings' 
+                ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' 
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700/50 dark:hover:text-slate-200'
             }`}
           >
             <SettingsIcon className="w-5 h-5" />
@@ -527,28 +668,41 @@ export default function App() {
           </button>
         </nav>
 
-        <div className="p-4 border-t border-slate-100">
+        <div className="p-4 border-t border-slate-100 dark:border-slate-700">
           <div className="flex gap-2 mb-4">
             <button 
               onClick={() => setLang('en')}
-              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${lang === 'en' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-500 border border-slate-100'}`}
+              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
+                lang === 'en' 
+                  ? 'bg-indigo-600 text-white' 
+                  : 'bg-slate-50 text-slate-500 border border-slate-100 dark:bg-slate-700 dark:text-slate-400 dark:border-slate-600'
+              }`}
             >
               {t.english}
             </button>
             <button 
               onClick={() => setLang('mm')}
-              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${lang === 'mm' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-500 border border-slate-100'}`}
+              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
+                lang === 'mm' 
+                  ? 'bg-indigo-600 text-white' 
+                  : 'bg-slate-50 text-slate-500 border border-slate-100 dark:bg-slate-700 dark:text-slate-400 dark:border-slate-600'
+              }`}
             >
               {t.burmese}
             </button>
           </div>
-          <div className="bg-slate-50 p-4 rounded-2xl mb-4">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{t.signedInAs}</p>
-            <p className="text-xs font-bold text-slate-700 truncate">{session?.user.email}</p>
+          <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-2xl mb-4 transition-colors">
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">{t.signedInAs}</p>
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate mb-2">{session?.user.email}</p>
+            {isAdmin && (
+              <span className="inline-block px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10px] font-bold rounded-md border border-amber-200 dark:border-amber-800">
+                ADMIN ACCESS
+              </span>
+            )}
           </div>
           <button 
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-rose-500 hover:bg-rose-50 transition-all font-medium"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all font-medium"
           >
             <LogOut className="w-5 h-5" />
             {t.logout}
@@ -564,13 +718,24 @@ export default function App() {
               {/* Header */}
               <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                 <div>
-                  <h1 className="text-3xl font-bold text-slate-900">{t.home}</h1>
-                  <p className="text-slate-500 mt-1">{t.tagline}</p>
+                  <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{t.home}</h1>
+                  <p className="text-slate-500 dark:text-slate-400 mt-1">{t.tagline}</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <button 
+                    onClick={() => {
+                      setLoading(true);
+                      fetchStudents().then(() => fetchStats());
+                    }}
+                    className="flex items-center gap-2 px-4 py-2.5 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all font-medium shadow-sm active:scale-95"
+                    title="Refresh List"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                    <span className="hidden sm:inline">Refresh</span>
+                  </button>
+                  <button 
                     onClick={exportToCSV}
-                    className="flex items-center gap-2 px-4 py-2 text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all font-medium shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all font-medium shadow-sm"
                   >
                     <Download className="w-4 h-4" />
                     {t.exportCSV}
@@ -610,7 +775,7 @@ export default function App() {
                     id="search-input"
                     type="text" 
                     placeholder={t.searchPlaceholder} 
-                    className="w-full pl-14 pr-14 py-3 bg-white border border-slate-200 rounded-2xl shadow-sm focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-slate-700 placeholder:text-slate-400"
+                    className="w-full pl-14 pr-14 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-slate-700 dark:text-slate-200 placeholder:text-slate-400"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
@@ -618,49 +783,50 @@ export default function App() {
                     {searchTerm && (
                       <button 
                         onClick={() => setSearchTerm('')}
-                        className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
+                        className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                         title={t.clearSearch}
                       >
                         <X className="w-4 h-4" />
                       </button>
                     )}
-                    <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-slate-400 bg-slate-50 border border-slate-200 rounded-lg">
+                    <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-slate-400 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg">
                       /
                     </kbd>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3 py-1.5 shadow-sm">
+                  <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-1.5 shadow-sm">
                     <Filter className="w-4 h-4 text-slate-400" />
                     <select 
-                      className="bg-transparent text-sm font-medium text-slate-600 focus:outline-none cursor-pointer pr-2"
+                      className="bg-transparent text-sm font-medium text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer pr-2"
                       value={selectedGrade}
                       onChange={(e) => setSelectedGrade(e.target.value)}
                     >
-                      <option>{t.allGrades}</option>
+                      <option className="dark:bg-slate-800">{t.allGrades}</option>
+                      <option value="KG" className="dark:bg-slate-800">KG</option>
                       {[...Array(12)].map((_, i) => (
-                        <option key={i} value={`Grade ${i + 1}`}>Grade {i + 1}</option>
+                        <option key={i} value={`Grade ${i + 1}`} className="dark:bg-slate-800">Grade {i + 1}</option>
                       ))}
                     </select>
                   </div>
 
-                  <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3 py-1.5 shadow-sm">
+                  <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-1.5 shadow-sm">
                     <ArrowUpDown className="w-4 h-4 text-slate-400" />
                     <select 
-                      className="bg-transparent text-sm font-medium text-slate-600 focus:outline-none cursor-pointer pr-2"
+                      className="bg-transparent text-sm font-medium text-slate-600 dark:text-slate-300 focus:outline-none cursor-pointer pr-2"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
                     >
-                      <option value="newest">{t.newest}</option>
-                      <option value="oldest">{t.oldest}</option>
-                      <option value="name">{t.nameAZ}</option>
+                      <option value="newest" className="dark:bg-slate-800">{t.newest}</option>
+                      <option value="oldest" className="dark:bg-slate-800">{t.oldest}</option>
+                      <option value="name" className="dark:bg-slate-800">{t.nameAZ}</option>
                     </select>
                   </div>
                   
-                  <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-2xl whitespace-nowrap">
-                    <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">{t.results}</span>
-                    <span className="text-sm font-bold text-indigo-700">
+                  <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 rounded-2xl whitespace-nowrap">
+                    <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">{t.results}</span>
+                    <span className="text-sm font-bold text-indigo-700 dark:text-indigo-300">
                       {filteredStudents.length} <span className="font-normal opacity-60">{t.of}</span> {students.length}
                     </span>
                   </div>
@@ -684,38 +850,38 @@ export default function App() {
               <div className="glass-card overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-slate-50 border-bottom border-slate-200">
-                      <th className="px-6 py-4 text-sm font-semibold text-slate-600">{t.studentName}</th>
-                      <th className="px-6 py-4 text-sm font-semibold text-slate-600">{t.enrollmentNo}</th>
-                      <th className="px-6 py-4 text-sm font-semibold text-slate-600">{t.grade}</th>
-                      <th className="px-6 py-4 text-sm font-semibold text-slate-600 hidden md:table-cell">{t.birthDate}</th>
-                      <th className="px-6 py-4 text-sm font-semibold text-slate-600 hidden lg:table-cell">{t.parents}</th>
-                      <th className="px-6 py-4 text-sm font-semibold text-slate-600">{t.phoneNo}</th>
-                      <th className="px-6 py-4 text-sm font-semibold text-slate-600 hidden xl:table-cell">{t.notes}</th>
-                      <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">{t.actions}</th>
+                    <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                      <th className="px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300">{t.studentName}</th>
+                      <th className="px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300">{t.enrollmentNo}</th>
+                      <th className="px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300">{t.grade}</th>
+                      <th className="px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300 hidden md:table-cell">{t.birthDate}</th>
+                      <th className="px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300 hidden lg:table-cell">{t.parents}</th>
+                      <th className="px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300">{t.phoneNo}</th>
+                      <th className="px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300 hidden xl:table-cell">{t.notes}</th>
+                      <th className="px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300 text-right">{t.actions}</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                     {loading ? (
                       <tr>
-                        <td colSpan={8} className="px-6 py-12 text-center text-slate-400">{t.loadingStudents}</td>
+                        <td colSpan={8} className="px-6 py-12 text-center text-slate-400 dark:text-slate-500">{t.loadingStudents}</td>
                       </tr>
                     ) : filteredStudents.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="px-6 py-20 text-center">
                           <div className="flex flex-col items-center gap-3">
-                            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center">
-                              <Search className="w-8 h-8 text-slate-300" />
+                            <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center">
+                              <Search className="w-8 h-8 text-slate-300 dark:text-slate-600" />
                             </div>
-                            <h3 className="text-lg font-bold text-slate-900">{t.noStudents}</h3>
-                            <p className="text-slate-500 max-w-xs mx-auto">We couldn't find any students matching your current filters or search term.</p>
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white">{t.noStudents}</h3>
+                            <p className="text-slate-500 dark:text-slate-400 max-w-xs mx-auto">We couldn't find any students matching your current filters or search term.</p>
                             <button 
                               onClick={() => {
                                 setSearchTerm('');
                                 setSelectedGrade('All Grades');
                                 setSortBy('newest');
                               }}
-                              className="mt-2 px-6 py-2 bg-indigo-50 text-indigo-600 font-bold rounded-xl hover:bg-indigo-100 transition-all"
+                              className="mt-2 px-6 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-bold rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all"
                             >
                               {t.clearFilters}
                             </button>
@@ -724,38 +890,37 @@ export default function App() {
                       </tr>
                     ) : (
                       filteredStudents.map((student) => (
-                        <tr key={student.id} className="hover:bg-slate-50/50 transition-colors group">
+                        <tr key={student.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors group border-b border-slate-100 dark:border-slate-700 last:border-0">
                           <td className="px-6 py-4">
-                            <div className="font-medium text-slate-900">{student.name}</div>
-                            <div className="text-xs text-slate-500 md:hidden">{student.enrollmentNo}</div>
+                            <div className="font-medium text-slate-900 dark:text-white">{student.name}</div>
                           </td>
-                          <td className="px-6 py-4 text-sm text-slate-600">{student.enrollmentNo}</td>
+                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">{student.enrollment_no}</td>
                           <td className="px-6 py-4">
-                            <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-100">
+                            <span className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-xs font-bold rounded-lg border border-indigo-100 dark:border-indigo-800">
                               {student.grade || t.na}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-sm text-slate-600 hidden md:table-cell">{student.birth_date}</td>
-                          <td className="px-6 py-4 text-sm text-slate-600 hidden lg:table-cell">
+                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300 hidden md:table-cell">{student.birth_date}</td>
+                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300 hidden lg:table-cell">
                             <div className="text-xs opacity-70">F: {student.father_name || '-'}</div>
                             <div className="text-xs opacity-70">M: {student.mother_name || '-'}</div>
                           </td>
-                          <td className="px-6 py-4 text-sm text-slate-600">{student.phone_no}</td>
-                          <td className="px-6 py-4 text-sm text-slate-600 hidden xl:table-cell max-w-xs">
+                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">{student.phone_no}</td>
+                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300 hidden xl:table-cell max-w-xs">
                             <p className="truncate" title={student.notes}>{student.notes || '-'}</p>
                           </td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-2">
                               <button 
                                 onClick={() => setSelectedStudent(student)}
-                                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 dark:hover:text-indigo-400 rounded-lg transition-all"
                                 title={t.viewDetails}
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
                               <button 
                                 onClick={() => handleDelete(student.id)}
-                                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 dark:hover:text-rose-400 rounded-lg transition-all"
                                 title={t.delete}
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -774,27 +939,33 @@ export default function App() {
           {view === 'dashboard' && (
             <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-8">
               <header>
-                <h1 className="text-3xl font-bold text-slate-900">{t.dashboard}</h1>
-                <p className="text-slate-500 mt-1">System-wide analytics and student distribution</p>
+                <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{t.dashboard}</h1>
+                <p className="text-slate-500 dark:text-slate-400 mt-1">System-wide analytics and student distribution</p>
               </header>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="glass-card p-6">
                   <div className="flex items-center justify-between mb-6">
-                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                      <BarChart3 className="w-5 h-5 text-indigo-600" />
+                    <h3 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                       {t.gradeDistribution}
                     </h3>
                   </div>
                   <div className="h-[300px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={stats?.gradeDistribution || []}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="grade" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
-                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? '#334155' : '#f1f5f9'} />
+                        <XAxis dataKey="grade" axisLine={false} tickLine={false} tick={{ fill: darkMode ? '#94a3b8' : '#64748b', fontSize: 12 }} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fill: darkMode ? '#94a3b8' : '#64748b', fontSize: 12 }} />
                         <Tooltip 
-                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                          cursor={{ fill: '#f8fafc' }}
+                          contentStyle={{ 
+                            borderRadius: '12px', 
+                            border: 'none', 
+                            boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                            backgroundColor: darkMode ? '#1e293b' : '#ffffff',
+                            color: darkMode ? '#f8fafc' : '#0f172a'
+                          }}
+                          cursor={{ fill: darkMode ? '#334155' : '#f8fafc' }}
                         />
                         <Bar dataKey="count" fill="#4f46e5" radius={[4, 4, 0, 0]} />
                       </BarChart>
@@ -804,8 +975,8 @@ export default function App() {
 
                 <div className="glass-card p-6">
                   <div className="flex items-center justify-between mb-6">
-                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                      <PieChartIcon className="w-5 h-5 text-indigo-600" />
+                    <h3 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      <PieChartIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                       {t.enrollmentOverview}
                     </h3>
                   </div>
@@ -826,7 +997,14 @@ export default function App() {
                             <Cell key={`cell-${index}`} fill={['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][index % 5]} />
                           ))}
                         </Pie>
-                        <Tooltip contentStyle={{ borderRadius: '12px', border: 'none' }} />
+                        <Tooltip 
+                          contentStyle={{ 
+                            borderRadius: '12px', 
+                            border: 'none',
+                            backgroundColor: darkMode ? '#1e293b' : '#ffffff',
+                            color: darkMode ? '#f8fafc' : '#0f172a'
+                          }} 
+                        />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
@@ -834,14 +1012,21 @@ export default function App() {
               </div>
 
               <div className="glass-card p-6">
-                <h3 className="font-bold text-slate-800 mb-6">{t.recentAdmissionsTrend}</h3>
+                <h3 className="font-bold text-slate-800 dark:text-slate-200 mb-6">{t.recentAdmissionsTrend}</h3>
                 <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={stats?.recentAdmissions || []}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
-                      <Tooltip contentStyle={{ borderRadius: '12px', border: 'none' }} />
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? '#334155' : '#f1f5f9'} />
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: darkMode ? '#94a3b8' : '#64748b', fontSize: 12 }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: darkMode ? '#94a3b8' : '#64748b', fontSize: 12 }} />
+                      <Tooltip 
+                        contentStyle={{ 
+                          borderRadius: '12px', 
+                          border: 'none',
+                          backgroundColor: darkMode ? '#1e293b' : '#ffffff',
+                          color: darkMode ? '#f8fafc' : '#0f172a'
+                        }} 
+                      />
                       <Line type="monotone" dataKey="count" stroke="#4f46e5" strokeWidth={3} dot={{ r: 4, fill: '#4f46e5' }} activeDot={{ r: 6 }} />
                     </LineChart>
                   </ResponsiveContainer>
@@ -853,49 +1038,64 @@ export default function App() {
           {view === 'settings' && (
             <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="max-w-2xl mx-auto">
               <header className="mb-8">
-                <h1 className="text-3xl font-bold text-slate-900">{t.settings}</h1>
-                <p className="text-slate-500 mt-1">{t.settingsTagline}</p>
+                <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{t.settings}</h1>
+                <p className="text-slate-500 dark:text-slate-400 mt-1">{t.settingsTagline}</p>
               </header>
 
               <div className="space-y-6">
                 <div className="glass-card p-6">
-                  <h3 className="font-bold text-slate-900 mb-4">{t.generalPreferences}</h3>
+                  <h3 className="font-bold text-slate-900 dark:text-white mb-4">{t.generalPreferences}</h3>
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-medium text-slate-700">{t.darkMode}</p>
-                        <p className="text-sm text-slate-500">{t.darkModeDesc}</p>
+                        <p className="font-medium text-slate-700 dark:text-slate-300">{t.darkMode}</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">{t.darkModeDesc}</p>
                       </div>
-                      <div className="w-12 h-6 bg-slate-200 rounded-full relative cursor-not-allowed">
-                        <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm" />
-                      </div>
+                      <button 
+                        onClick={() => setDarkMode(!darkMode)}
+                        className={`w-12 h-6 rounded-full relative transition-colors ${darkMode ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                      >
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${darkMode ? 'left-7' : 'left-1'}`} />
+                      </button>
                     </div>
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-medium text-slate-700">{t.emailNotifications}</p>
-                        <p className="text-sm text-slate-500">{t.emailNotificationsDesc}</p>
+                        <p className="font-medium text-slate-700 dark:text-slate-300">{t.emailNotifications}</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">{t.emailNotificationsDesc}</p>
                       </div>
-                      <div className="w-12 h-6 bg-indigo-600 rounded-full relative cursor-pointer">
-                        <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm" />
-                      </div>
+                      <button 
+                        onClick={() => {
+                          setEmailNotifications(!emailNotifications);
+                          showToast(`Email notifications ${!emailNotifications ? 'enabled' : 'disabled'}`, 'success');
+                        }}
+                        className={`w-12 h-6 rounded-full relative transition-colors ${emailNotifications ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                      >
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${emailNotifications ? 'left-7' : 'left-1'}`} />
+                      </button>
                     </div>
                   </div>
                 </div>
 
                 <div className="glass-card p-6">
-                  <h3 className="font-bold text-slate-900 mb-4">{t.databaseManagement}</h3>
+                  <h3 className="font-bold text-slate-900 dark:text-white mb-4">{t.databaseManagement}</h3>
                   <div className="space-y-4">
-                    <button className="w-full text-left px-4 py-3 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors flex items-center justify-between group">
+                    <button 
+                      onClick={handleBackupDatabase}
+                      className="w-full text-left px-4 py-3 bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors flex items-center justify-between group"
+                    >
                       <div>
-                        <p className="font-medium text-slate-700">{t.backupDatabase}</p>
-                        <p className="text-sm text-slate-500">{t.backupDatabaseDesc}</p>
+                        <p className="font-medium text-slate-700 dark:text-slate-300">{t.backupDatabase}</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">{t.backupDatabaseDesc}</p>
                       </div>
-                      <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
+                      <ArrowRight className="w-4 h-4 text-slate-400 dark:text-slate-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" />
                     </button>
-                    <button className="w-full text-left px-4 py-3 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors flex items-center justify-between group">
+                    <button 
+                      onClick={handleClearAllRecords}
+                      className="w-full text-left px-4 py-3 bg-rose-50 dark:bg-rose-900/10 hover:bg-rose-100 dark:hover:bg-rose-900/20 rounded-xl transition-colors flex items-center justify-between group"
+                    >
                       <div>
-                        <p className="font-medium text-rose-700">{t.clearAllRecords}</p>
-                        <p className="text-sm text-rose-500">{t.clearAllRecordsDesc}</p>
+                        <p className="font-medium text-rose-700 dark:text-rose-400">{t.clearAllRecords}</p>
+                        <p className="text-sm text-rose-500 dark:text-rose-400/70">{t.clearAllRecordsDesc}</p>
                       </div>
                       <AlertCircle className="w-4 h-4 text-rose-400" />
                     </button>
@@ -1008,6 +1208,7 @@ export default function App() {
                                   onChange={e => setFormData({...formData, grade: e.target.value})}
                                 >
                                   <option value="">{t.grade}</option>
+                                  <option value="KG">KG</option>
                                   {[...Array(12)].map((_, i) => (
                                     <option key={i} value={`Grade ${i + 1}`}>Grade {i + 1}</option>
                                   ))}
