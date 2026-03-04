@@ -286,6 +286,7 @@ export default function App() {
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [formStep, setFormStep] = useState(1);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState<number | null>(null);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
