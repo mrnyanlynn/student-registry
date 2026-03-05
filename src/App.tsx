@@ -935,9 +935,84 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Data Table */}
-              <div className="glass-card overflow-x-auto">
-                <table className="w-full text-left border-collapse">
+              {/* Data Table & Mobile List */}
+              <div className="glass-card overflow-hidden">
+                {/* Mobile List View */}
+                <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-700">
+                  {loading ? (
+                    <div className="p-8 text-center text-slate-400 dark:text-slate-500">{t.loadingStudents}</div>
+                  ) : filteredStudents.length === 0 ? (
+                    <div className="p-8 text-center">
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="w-12 h-12 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center">
+                          <Search className="w-6 h-6 text-slate-300 dark:text-slate-600" />
+                        </div>
+                        <h3 className="text-base font-bold text-slate-900 dark:text-white">{t.noStudents}</h3>
+                        <button 
+                          onClick={() => {
+                            setSearchTerm('');
+                            setSelectedGrade('All Grades');
+                            setSortBy('newest');
+                          }}
+                          className="mt-2 text-sm text-indigo-600 dark:text-indigo-400 font-bold"
+                        >
+                          {t.clearFilters}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    filteredStudents.map((student) => (
+                      <div key={student.id} className="p-4 space-y-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h3 className="font-bold text-slate-900 dark:text-white">{student.name}</h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">{student.enrollment_no}</p>
+                          </div>
+                          <span className="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold rounded-md border border-indigo-100 dark:border-indigo-800">
+                            {student.grade || t.na}
+                          </span>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-300">
+                          <div className="flex items-center gap-1.5">
+                            <Phone className="w-3.5 h-3.5 text-slate-400" />
+                            {student.phone_no || '-'}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <User className="w-3.5 h-3.5 text-slate-400" />
+                            {student.father_name || '-'}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-2">
+                          <button 
+                            onClick={() => setSelectedStudent(student)}
+                            className="flex-1 flex items-center justify-center gap-2 py-2 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            {t.viewDetails}
+                          </button>
+                          <button 
+                            onClick={() => handleEdit(student)}
+                            className="flex items-center justify-center w-9 h-9 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg border border-amber-100 dark:border-amber-800/30"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(student.id)}
+                            className="flex items-center justify-center w-9 h-9 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 rounded-lg border border-rose-100 dark:border-rose-800/30"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
                       <th className="px-6 py-4 text-sm font-semibold text-slate-600 dark:text-slate-300">{t.studentName}</th>
@@ -1028,6 +1103,7 @@ export default function App() {
                     )}
                   </tbody>
                 </table>
+              </div>
               </div>
             </motion.div>
           )}
