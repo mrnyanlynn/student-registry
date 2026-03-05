@@ -1689,7 +1689,7 @@ export default function App() {
                 </div>
 
                 <div className="space-y-3">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t.guardianName}</p>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t.guardianInfo}</p>
                   <div className="bg-slate-50 p-4 rounded-2xl space-y-3 border border-slate-100">
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-slate-500 flex items-center gap-2">
