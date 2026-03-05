@@ -57,6 +57,7 @@ import { Student, NewStudent } from './types';
 import { supabase } from './supabaseClient';
 import { Session } from '@supabase/supabase-js';
 import { Language, translations } from './i18n';
+import ReloadPrompt from './components/ReloadPrompt';
 
 // --- Components ---
 
@@ -337,9 +338,11 @@ export default function App() {
   }, [session]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
       if (error) {
         console.error('Session error:', error);
+        // Clear invalid session data
+        await supabase.auth.signOut();
         setSession(null);
         setLoading(false);
         return;
@@ -355,7 +358,15 @@ export default function App() {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setStudents([]);
+        setStats(null);
+        setLoading(false);
+        return;
+      }
+
       setSession(session);
       if (session) {
         fetchStudents();
@@ -1872,6 +1883,8 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+      
+      <ReloadPrompt />
     </div>
   );
 }
