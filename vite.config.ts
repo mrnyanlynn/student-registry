@@ -15,12 +15,12 @@ export default defineConfig(({mode}) => {
         devOptions: {
           enabled: true
         },
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+        includeAssets: ['icon.svg'],
         manifest: {
           name: 'Student Registry',
           short_name: 'StudentReg',
           description: 'Precision Student Management System',
-          theme_color: '#ffffff',
+          theme_color: '#4f46e5',
           background_color: '#ffffff',
           display: 'standalone',
           icons: [
