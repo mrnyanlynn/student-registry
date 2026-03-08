@@ -57,7 +57,6 @@ import { Student, NewStudent } from './types';
 import { supabase } from './supabaseClient';
 import { Session } from '@supabase/supabase-js';
 import { Language, translations } from './i18n';
-import ReloadPrompt from './components/ReloadPrompt';
 
 // --- Components ---
 
@@ -365,7 +364,7 @@ export default function App() {
   }, [stats]);
 
   const isAdmin = useMemo(() => {
-    return session?.user?.email?.toLowerCase() === 'admin@example.com';
+    return session?.user?.email?.toLowerCase() === 'hyper9@example.com';
   }, [session]);
 
   useEffect(() => {
@@ -400,7 +399,7 @@ export default function App() {
       }
       
       // Handle token refresh errors that might come through auth state change
-      if (event === 'TOKEN_REFRESH_UPDATED' && !session) {
+      if (event === 'TOKEN_REFRESHED' && !session) {
          await supabase.auth.signOut();
          setSession(null);
          return;
@@ -432,7 +431,20 @@ export default function App() {
 
   const fetchStats = React.useCallback(async () => {
     try {
-      // Fetch only necessary columns for stats to improve performance
+      if (isAdmin) {
+        // Admin: Fetch global stats from backend
+        try {
+          const response = await fetch('/api/admin/stats');
+          if (!response.ok) throw new Error('Backend stats fetch failed');
+          const statsData = await response.json();
+          setStats(statsData);
+          return;
+        } catch (e) {
+          console.warn('Backend stats fetch failed, falling back to client-side fetch');
+        }
+      } 
+      
+      // Regular User OR Admin Fallback: Fetch from Supabase (RLS applied)
       const { data, error } = await supabase
         .from('students')
         .select('grade, created_at');
@@ -456,10 +468,21 @@ export default function App() {
           recentAdmissions: Object.entries(recentAdmissionsMap).map(([date, count]) => ({ date, count }))
         });
       }
+      
     } catch (err) {
-      console.error('Error fetching stats:', err);
+      console.warn('Supabase stats fetch failed, attempting SQLite fallback:', err);
+      try {
+        // Fallback to SQLite endpoint if Supabase fails
+        const response = await fetch('/api/stats');
+        if (!response.ok) throw new Error('SQLite stats fetch failed');
+        const statsData = await response.json();
+        setStats(statsData);
+      } catch (sqliteErr) {
+        console.error('All stats fetch methods failed. Original error:', err);
+        console.error('SQLite fallback error:', sqliteErr);
+      }
     }
-  }, []);
+  }, [isAdmin]);
 
   const fetchStudents = React.useCallback(async () => {
     // Don't set loading to true for background refreshes if we already have data
@@ -468,45 +491,105 @@ export default function App() {
     if (students.length === 0) setLoading(true);
     
     try {
-      let query = supabase
-        .from('students')
-        .select('*', { count: 'exact' });
+      if (isAdmin) {
+        // Admin: Fetch ALL students from backend (bypassing RLS)
+        const params = new URLSearchParams({
+          page: page.toString(),
+          pageSize: PAGE_SIZE.toString(),
+          sortBy: sortBy
+        });
+        
+        if (searchTerm) params.append('search', searchTerm);
+        if (selectedGrade !== 'All Grades') params.append('grade', selectedGrade);
+        if (selectedGender !== 'All Genders') params.append('gender', selectedGender);
 
-      // Apply Filters
-      if (searchTerm) {
-        query = query.or(`name.ilike.%${searchTerm}%,enrollment_no.ilike.%${searchTerm}%`);
-      }
-      
-      if (selectedGrade !== 'All Grades') {
-        query = query.eq('grade', selectedGrade);
-      }
-
-      if (selectedGender !== 'All Genders') {
-        query = query.eq('gender', selectedGender);
-      }
-
-      // Apply Sorting
-      if (sortBy === 'name') {
-        query = query.order('name', { ascending: true });
-      } else if (sortBy === 'oldest') {
-        query = query.order('created_at', { ascending: true });
+        const response = await fetch(`/api/admin/students?${params.toString()}`);
+        
+        if (!response.ok) {
+           // Fallback to client-side fetch if backend fails (e.g. missing key)
+           console.warn("Backend fetch failed, falling back to client-side fetch");
+           throw new Error("Backend fetch failed");
+        }
+        
+        const { data, count } = await response.json();
+        setStudents(data || []);
+        setTotalCount(count || 0);
       } else {
-        query = query.order('created_at', { ascending: false });
+        // Regular User: Fetch own students from Supabase (RLS applied)
+        let query = supabase
+          .from('students')
+          .select('*', { count: 'exact' });
+
+        // Apply Filters
+        if (searchTerm) {
+          query = query.or(`name.ilike.%${searchTerm}%,enrollment_no.ilike.%${searchTerm}%`);
+        }
+        
+        if (selectedGrade !== 'All Grades') {
+          query = query.eq('grade', selectedGrade);
+        }
+
+        if (selectedGender !== 'All Genders') {
+          query = query.eq('gender', selectedGender);
+        }
+
+        // Apply Sorting
+        if (sortBy === 'name') {
+          query = query.order('name', { ascending: true });
+        } else if (sortBy === 'oldest') {
+          query = query.order('created_at', { ascending: true });
+        } else {
+          query = query.order('created_at', { ascending: false });
+        }
+
+        // Apply Pagination
+        const from = page * PAGE_SIZE;
+        const to = from + PAGE_SIZE - 1;
+        query = query.range(from, to);
+
+        const { data, error, count } = await query;
+        
+        if (error) throw error;
+        
+        setStudents(data || []);
+        setTotalCount(count || 0);
       }
-
-      // Apply Pagination
-      const from = page * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-      query = query.range(from, to);
-
-      const { data, error, count } = await query;
-      
-      if (error) throw error;
-      
-      setStudents(data || []);
-      setTotalCount(count || 0);
     } catch (err: any) {
       console.error('Error fetching students:', err);
+      
+      // If backend fetch failed for admin, try client-side fetch as fallback
+      if (isAdmin && err.message === "Backend fetch failed") {
+         try {
+            let query = supabase
+              .from('students')
+              .select('*', { count: 'exact' });
+
+            // Apply Filters (same as above)
+            if (searchTerm) query = query.or(`name.ilike.%${searchTerm}%,enrollment_no.ilike.%${searchTerm}%`);
+            if (selectedGrade !== 'All Grades') query = query.eq('grade', selectedGrade);
+            if (selectedGender !== 'All Genders') query = query.eq('gender', selectedGender);
+
+            // Apply Sorting
+            if (sortBy === 'name') query = query.order('name', { ascending: true });
+            else if (sortBy === 'oldest') query = query.order('created_at', { ascending: true });
+            else query = query.order('created_at', { ascending: false });
+
+            // Apply Pagination
+            const from = page * PAGE_SIZE;
+            const to = from + PAGE_SIZE - 1;
+            query = query.range(from, to);
+
+            const { data, error, count } = await query;
+            if (error) throw error;
+            
+            setStudents(data || []);
+            setTotalCount(count || 0);
+            return; // Exit successfully after fallback
+         } catch (fallbackErr) {
+            console.error('Fallback fetch failed:', fallbackErr);
+         }
+      }
+
       if (err.message === 'Failed to fetch') {
         showToast(t.networkError, 'error');
       } else if (err.message && (err.message.includes('Refresh Token') || err.message.includes('JWT') || err.message.includes('User not found'))) {
@@ -519,7 +602,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [page, searchTerm, selectedGrade, selectedGender, sortBy, t, PAGE_SIZE]);
+  }, [page, searchTerm, selectedGrade, selectedGender, sortBy, t, PAGE_SIZE, isAdmin]);
 
   // Realtime Subscription for Multi-User Support
   useEffect(() => {
@@ -734,11 +817,28 @@ export default function App() {
         
         if (isAdmin) {
           // Admin can delete ALL records
-          const result = await supabase
-            .from('students')
-            .delete()
-            .gt('id', 0); // Delete all rows
-          error = result.error;
+          // Try to use the backend route first (which uses Service Role Key to bypass RLS)
+          try {
+            const response = await fetch('/api/admin/delete-all', {
+              method: 'DELETE',
+            });
+            
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              console.warn("Backend delete failed:", errorData);
+              throw new Error(errorData.error || "Backend delete failed. Check server configuration (Service Role Key).");
+            }
+            
+            // Backend delete successful
+          } catch (backendError: any) {
+             console.error("Admin delete failed:", backendError);
+             showToast(`Admin Delete Failed: ${backendError.message}`, 'error');
+             // Do not fall back to client-side delete for "Delete All" to avoid partial deletes
+             // that might confuse the admin.
+             setIsDeleteModalOpen(false);
+             setIsDeletingAll(false);
+             return; 
+          }
         } else {
           // Regular users can only delete their own records
           const result = await supabase
@@ -1077,7 +1177,7 @@ export default function App() {
                 <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-700">
                   {loading ? (
                     <div className="p-8 text-center text-slate-400 dark:text-slate-500">{t.loadingStudents}</div>
-                  ) : filteredStudents.length === 0 ? (
+                  ) : students.length === 0 ? (
                     <div className="p-8 text-center">
                       <div className="flex flex-col items-center gap-3">
                         <div className="w-12 h-12 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center">
@@ -1098,7 +1198,7 @@ export default function App() {
                       </div>
                     </div>
                   ) : (
-                    filteredStudents.map((student) => (
+                    students.map((student) => (
                       <div key={student.id} className="p-4 space-y-3">
                         <div className="flex justify-between items-start">
                           <div>
@@ -1170,7 +1270,7 @@ export default function App() {
                       <tr>
                         <td colSpan={8} className="px-6 py-12 text-center text-slate-400 dark:text-slate-500">{t.loadingStudents}</td>
                       </tr>
-                    ) : filteredStudents.length === 0 ? (
+                    ) : students.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="px-6 py-20 text-center">
                           <div className="flex flex-col items-center gap-3">
@@ -1193,7 +1293,7 @@ export default function App() {
                         </td>
                       </tr>
                     ) : (
-                      filteredStudents.map((student) => (
+                      students.map((student) => (
                         <tr key={student.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors group border-b border-slate-100 dark:border-slate-700 last:border-0">
                           <td className="px-6 py-4">
                             <div className="font-medium text-slate-900 dark:text-white">{student.name}</div>
@@ -2059,7 +2159,7 @@ export default function App() {
                 </h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
                   {isDeletingAll 
-                    ? t.deleteAllConfirm 
+                    ? (isAdmin ? "Warning: As an Admin, this will delete ALL records in the database for ALL users. This action cannot be undone." : t.deleteAllConfirm)
                     : t.deleteStudentConfirm}
                 </p>
                 <div className="flex gap-3">
@@ -2093,7 +2193,6 @@ export default function App() {
         )}
       </AnimatePresence>
       
-      <ReloadPrompt />
     </div>
   );
 }

@@ -14,19 +14,84 @@
     <meta name="apple-mobile-web-app-title" content="Student Registry" />
     <title>Student Registry</title>
     <script>
+      // Aggressively unregister any service workers and clear caches
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          if (registrations.length > 0) {
+            console.warn('Found active service workers, unregistering...');
+            Promise.all(registrations.map(r => r.unregister())).then(() => {
+              console.log('All service workers unregistered. Reloading page...');
+              window.location.reload();
+            });
+          }
+        });
+      }
+      
+      // Clear caches to prevent stale assets
+      if ('caches' in window) {
+        caches.keys().then(function(names) {
+          for (let name of names) {
+            caches.delete(name);
+          }
+        });
+      }
+    </script>
+    <script>
       // Suppress Vite HMR connection errors in preview environment
+      // We suppress all console methods because Vite can be noisy in the preview iframe
+      const suppressVite = (args) => {
+        if (!args || !args.length) return false;
+        
+        for (let i = 0; i < args.length; i++) {
+            const arg = args[i];
+            if (typeof arg === 'string') {
+                if (arg.includes('[vite]') || 
+                    arg.includes('Refresh Token') || 
+                    arg.includes('JWT')) {
+                  return true;
+                }
+            }
+            if (arg instanceof Error) {
+                if (arg.message && (
+                    arg.message.includes('[vite]') || 
+                    arg.message.includes('Refresh Token') || 
+                    arg.message.includes('JWT')
+                )) {
+                  return true;
+                }
+            }
+        }
+        return false;
+      };
+
       const originalConsoleError = console.error;
       console.error = function(...args) {
-        if (args[0] && typeof args[0] === 'string') {
-          if (args[0].includes('[vite] failed to connect') || args[0].includes('[vite] server connection lost')) {
-            return;
-          }
-          // Suppress refresh token errors as they are handled in the UI
-          if (args[0].includes('Refresh Token') || args[0].includes('JWT')) {
-            return;
-          }
-        }
+        if (suppressVite(args)) return;
         originalConsoleError.apply(console, args);
+      };
+      
+      const originalConsoleWarn = console.warn;
+      console.warn = function(...args) {
+        if (suppressVite(args)) return;
+        originalConsoleWarn.apply(console, args);
+      };
+
+      const originalConsoleLog = console.log;
+      console.log = function(...args) {
+        if (suppressVite(args)) return;
+        originalConsoleLog.apply(console, args);
+      };
+
+      const originalConsoleInfo = console.info;
+      console.info = function(...args) {
+        if (suppressVite(args)) return;
+        originalConsoleInfo.apply(console, args);
+      };
+
+      const originalConsoleDebug = console.debug;
+      console.debug = function(...args) {
+        if (suppressVite(args)) return;
+        originalConsoleDebug.apply(console, args);
       };
     </script>
   </head>

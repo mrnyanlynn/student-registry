@@ -10,10 +10,10 @@ export default defineConfig(({mode}) => {
     plugins: [
       react(), 
       tailwindcss(),
-      VitePWA({
+      ...(mode === 'production' ? [VitePWA({
         registerType: 'prompt',
         devOptions: {
-          enabled: true
+          enabled: false
         },
         includeAssets: ['icon.svg'],
         manifest: {
@@ -38,7 +38,7 @@ export default defineConfig(({mode}) => {
             }
           ]
         }
-      })
+      })] : [])
     ],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
