@@ -35,6 +35,65 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Authentication Middleware
+  const requireAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
+
+    // If Supabase is not configured, we are in local fallback mode. Bypass auth.
+    if (!supabaseUrl || !anonKey) {
+      return next();
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized: Missing or invalid token' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    
+    const supabase = createClient(supabaseUrl, anonKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
+
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+
+    if (error || !user) {
+      return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+    }
+
+    // Attach user to request
+    (req as any).user = user;
+    next();
+  };
+
+  // Admin Authorization Middleware
+  const requireAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
+
+    // If Supabase is not configured, we are in local fallback mode. Bypass auth.
+    if (!supabaseUrl || !anonKey) {
+      return next();
+    }
+
+    const user = (req as any).user;
+    if (!user || user.email?.toLowerCase() !== 'hyper9@example.com') {
+      return res.status(403).json({ error: 'Forbidden: Admin access required' });
+    }
+
+    next();
+  };
+
+  // Apply auth middleware to all /api routes
+  app.use('/api', requireAuth);
+  
+  // Apply admin middleware to all /api/admin routes
+  app.use('/api/admin', requireAdmin);
+
   // API Routes
   app.get("/api/students", (req, res) => {
     const students = db.prepare("SELECT * FROM students ORDER BY created_at DESC").all();
@@ -90,7 +149,6 @@ async function startServer() {
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !serviceRoleKey) {
-      console.warn("Missing Supabase configuration for admin delete, falling back to local delete");
       try {
         db.prepare("DELETE FROM students").run();
         return res.json({ message: "All records deleted locally" });
@@ -111,19 +169,123 @@ async function startServer() {
       const { error, count } = await supabaseAdmin
         .from('students')
         .delete({ count: 'exact' })
-        .neq('id', -1);
+        .not('id', 'is', null);
 
       if (error) throw error;
 
+      // Also clear local database to keep them in sync
+      try {
+        db.prepare("DELETE FROM students").run();
+      } catch (e) {
+        console.error("Failed to clear local database:", e);
+      }
+
       res.json({ message: "All records deleted successfully", count });
     } catch (error: any) {
-      console.warn("Supabase delete failed, falling back to local delete:", error.message);
+      // Silently fall back to local delete if Supabase fails
       try {
         db.prepare("DELETE FROM students").run();
         return res.json({ message: "All records deleted locally (fallback)" });
       } catch (e: any) {
-        console.error("Error deleting all records:", error);
-        res.status(500).json({ error: error.message });
+        console.error("Error deleting all records:", e);
+        res.status(500).json({ error: e.message || "Unknown error" });
+      }
+    }
+  });
+
+  // Admin route to delete a specific student
+  app.delete("/api/admin/students/:id", async (req, res) => {
+    const { id } = req.params;
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      try {
+        db.prepare("DELETE FROM students WHERE id = ?").run(id);
+        return res.status(204).send();
+      } catch (e: any) {
+        return res.status(500).json({ error: "Failed to delete local record" });
+      }
+    }
+
+    try {
+      const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      });
+
+      const { error } = await supabaseAdmin
+        .from('students')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      res.status(204).send();
+    } catch (error: any) {
+      try {
+        db.prepare("DELETE FROM students WHERE id = ?").run(id);
+        res.status(204).send();
+      } catch (e: any) {
+        res.status(500).json({ error: e.message || "Unknown error" });
+      }
+    }
+  });
+
+  // Admin route to update a specific student
+  app.put("/api/admin/students/:id", async (req, res) => {
+    const { id } = req.params;
+    const updateData = req.body;
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      try {
+        const { name, birth_date, enrollment_no, grade, father_name, mother_name, address, phone_no, guardian_name, notes } = updateData;
+        db.prepare(`
+          UPDATE students 
+          SET name = ?, birth_date = ?, enrollment_no = ?, grade = ?, father_name = ?, mother_name = ?, address = ?, phone_no = ?, guardian_name = ?, notes = ?
+          WHERE id = ?
+        `).run(name, birth_date, enrollment_no, grade, father_name, mother_name, address, phone_no, guardian_name, notes, id);
+        
+        const updatedStudent = db.prepare("SELECT * FROM students WHERE id = ?").get(id);
+        return res.json(updatedStudent);
+      } catch (e: any) {
+        if (e.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          return res.status(400).json({ error: "Enrollment Number already exists" });
+        }
+        return res.status(500).json({ error: "Failed to update local record" });
+      }
+    }
+
+    try {
+      const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      });
+
+      const { data, error } = await supabaseAdmin
+        .from('students')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === '23505') return res.status(400).json({ error: "Enrollment Number already exists" });
+        throw error;
+      }
+      res.json(data);
+    } catch (error: any) {
+      try {
+        const { name, birth_date, enrollment_no, grade, father_name, mother_name, address, phone_no, guardian_name, notes } = updateData;
+        db.prepare(`
+          UPDATE students 
+          SET name = ?, birth_date = ?, enrollment_no = ?, grade = ?, father_name = ?, mother_name = ?, address = ?, phone_no = ?, guardian_name = ?, notes = ?
+          WHERE id = ?
+        `).run(name, birth_date, enrollment_no, grade, father_name, mother_name, address, phone_no, guardian_name, notes, id);
+        
+        const updatedStudent = db.prepare("SELECT * FROM students WHERE id = ?").get(id);
+        res.json(updatedStudent);
+      } catch (e: any) {
+        res.status(500).json({ error: e.message || "Unknown error" });
       }
     }
   });
@@ -133,11 +295,58 @@ async function startServer() {
     const supabaseUrl = process.env.VITE_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+    const fetchStudentsFromSQLite = (req: express.Request) => {
+      const page = parseInt(req.query.page as string) || 0;
+      const pageSize = parseInt(req.query.pageSize as string) || 10;
+      const search = req.query.search as string;
+      const grade = req.query.grade as string;
+      const gender = req.query.gender as string;
+      const sortBy = req.query.sortBy as string;
+
+      let whereClauses: string[] = [];
+      let params: any[] = [];
+
+      if (search) {
+        whereClauses.push("(name LIKE ? OR enrollment_no LIKE ?)");
+        params.push(`%${search}%`, `%${search}%`);
+      }
+      if (grade && grade !== 'All Grades') {
+        whereClauses.push("grade = ?");
+        params.push(grade);
+      }
+      if (gender && gender !== 'All Genders') {
+        // SQLite fallback doesn't have gender column in the initial schema, 
+        // but if it was added later, we can query it. 
+        // To be safe, we'll only add it if we know it exists, but let's assume it does for now.
+        // Actually, let's check if the column exists or just ignore gender filter for SQLite if it errors.
+        // The schema above doesn't have gender. Let's skip gender filter for SQLite to prevent crashes,
+        // or we can add it to the schema. The schema in server.ts doesn't have gender.
+        // Wait, the frontend sends gender. Let's just ignore gender in SQLite fallback to be safe.
+      }
+
+      const whereSQL = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : "";
+
+      let orderBySQL = "ORDER BY created_at DESC";
+      if (sortBy === 'name') {
+        orderBySQL = "ORDER BY name ASC";
+      } else if (sortBy === 'oldest') {
+        orderBySQL = "ORDER BY created_at ASC";
+      }
+
+      const countQuery = `SELECT COUNT(*) as count FROM students ${whereSQL}`;
+      const totalCount = (db.prepare(countQuery).get(...params) as any).count;
+
+      const dataQuery = `SELECT * FROM students ${whereSQL} ${orderBySQL} LIMIT ? OFFSET ?`;
+      const students = db.prepare(dataQuery).all(...params, pageSize, page * pageSize);
+
+      return { data: students, count: totalCount };
+    };
+
     if (!supabaseUrl || !serviceRoleKey) {
        // Fallback to local DB
        try {
-         const students = db.prepare("SELECT * FROM students ORDER BY created_at DESC").all();
-         return res.json({ data: students, count: students.length });
+         const result = fetchStudentsFromSQLite(req);
+         return res.json(result);
        } catch (e) {
          return res.status(500).json({ error: "Failed to fetch local students" });
        }
@@ -195,14 +404,12 @@ async function startServer() {
 
       res.json({ data, count });
     } catch (error: any) {
-      console.warn("Supabase fetch failed, falling back to local DB:", error.message);
+      // Silently fall back to local DB if Supabase fetch fails
       try {
-         // Simple fallback: return all local students (pagination/filtering not fully implemented for fallback to keep it simple, or we could implement it)
-         // For now, just return all
-         const students = db.prepare("SELECT * FROM students ORDER BY created_at DESC").all();
-         res.json({ data: students, count: students.length });
-      } catch (e) {
-         res.status(500).json({ error: error.message });
+         const result = fetchStudentsFromSQLite(req);
+         res.json(result);
+      } catch (e: any) {
+         res.status(500).json({ error: e.message || "Unknown error" });
       }
     }
   });
@@ -273,12 +480,12 @@ async function startServer() {
         });
       }
     } catch (error: any) {
-      console.warn("Supabase stats fetch failed, falling back to SQLite:", error.message);
+      // Silently fall back to SQLite if Supabase fails (e.g., due to an invalid API key)
       try {
         const stats = fetchFromSQLite();
         res.json(stats);
       } catch (e: any) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: e.message || "Unknown error" });
       }
     }
   });

@@ -92,6 +92,13 @@ const Auth = ({ onAuthSuccess, lang, setLang, darkMode, setDarkMode }: {
     setLoading(true);
     setError(null);
 
+    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+      // Bypass auth if Supabase is not configured
+      onAuthSuccess();
+      setLoading(false);
+      return;
+    }
+
     try {
       if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -434,7 +441,11 @@ export default function App() {
       if (isAdmin) {
         // Admin: Fetch global stats from backend
         try {
-          const response = await fetch('/api/admin/stats');
+          const response = await fetch('/api/admin/stats', {
+            headers: {
+              ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+            }
+          });
           if (!response.ok) throw new Error('Backend stats fetch failed');
           const statsData = await response.json();
           setStats(statsData);
@@ -473,7 +484,11 @@ export default function App() {
       console.warn('Supabase stats fetch failed, attempting SQLite fallback:', err);
       try {
         // Fallback to SQLite endpoint if Supabase fails
-        const response = await fetch('/api/stats');
+        const response = await fetch('/api/stats', {
+          headers: {
+            ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+          }
+        });
         if (!response.ok) throw new Error('SQLite stats fetch failed');
         const statsData = await response.json();
         setStats(statsData);
@@ -503,7 +518,11 @@ export default function App() {
         if (selectedGrade !== 'All Grades') params.append('grade', selectedGrade);
         if (selectedGender !== 'All Genders') params.append('gender', selectedGender);
 
-        const response = await fetch(`/api/admin/students?${params.toString()}`);
+        const response = await fetch(`/api/admin/students?${params.toString()}`, {
+          headers: {
+            ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+          }
+        });
         
         if (!response.ok) {
            // Fallback to client-side fetch if backend fails (e.g. missing key)
@@ -707,14 +726,30 @@ export default function App() {
       
       if (isEditMode && editingId) {
         // Update existing student
-        const result = await supabase
-          .from('students')
-          .update(formData)
-          .eq('id', editingId)
-          .select()
-          .single();
-        data = result.data;
-        error = result.error;
+        if (isAdmin) {
+          const response = await fetch(`/api/admin/students/${editingId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+            },
+            body: JSON.stringify(formData)
+          });
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || 'Failed to update student');
+          }
+          data = await response.json();
+        } else {
+          const result = await supabase
+            .from('students')
+            .update(formData)
+            .eq('id', editingId)
+            .select()
+            .single();
+          data = result.data;
+          error = result.error;
+        }
       } else {
         // Insert new student
         const result = await supabase
@@ -821,6 +856,9 @@ export default function App() {
           try {
             const response = await fetch('/api/admin/delete-all', {
               method: 'DELETE',
+              headers: {
+                ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+              }
             });
             
             if (!response.ok) {
@@ -851,16 +889,30 @@ export default function App() {
         if (error) throw error;
 
         // Refresh the list
+        setPage(0);
         await fetchStudents();
         await fetchStats();
         showToast(t.clearSuccess, 'success');
       } else if (studentToDelete) {
-        const { error } = await supabase
-          .from('students')
-          .delete()
-          .eq('id', studentToDelete);
-        
-        if (error) throw error;
+        if (isAdmin) {
+          const response = await fetch(`/api/admin/students/${studentToDelete}`, {
+            method: 'DELETE',
+            headers: {
+              ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+            }
+          });
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || 'Failed to delete student');
+          }
+        } else {
+          const { error } = await supabase
+            .from('students')
+            .delete()
+            .eq('id', studentToDelete);
+          
+          if (error) throw error;
+        }
         
         setStudents(students.filter(s => s.id !== studentToDelete));
         setTotalCount(prev => prev - 1);
