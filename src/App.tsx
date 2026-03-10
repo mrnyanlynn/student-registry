@@ -121,7 +121,7 @@ const Auth = ({ onAuthSuccess, lang, setLang, darkMode, setDarkMode }: {
       console.error('Auth error:', err);
       if (err.message === 'Failed to fetch') {
         setError(t.networkError);
-      } else if (err.message && (err.message.includes('Refresh Token') || err.message.includes('JWT'))) {
+      } else if (err.message && (err.message.toLowerCase().includes('refresh token') || err.message.toLowerCase().includes('jwt'))) {
         setError('Session expired. Please try again.');
         await supabase.auth.signOut();
       } else {
@@ -292,6 +292,8 @@ export default function App() {
   const t = translations[lang];
   const [view, setView] = useState<'home' | 'dashboard' | 'settings'>('home');
   const [students, setStudents] = useState<Student[]>([]);
+  const [selectedStudents, setSelectedStudents] = useState<number[]>([]);
+  const [selectedStudentsToDelete, setSelectedStudentsToDelete] = useState<number[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedGrade, setSelectedGrade] = useState('All Grades');
   const [selectedGender, setSelectedGender] = useState('All Genders');
@@ -379,7 +381,7 @@ export default function App() {
       if (error) {
         console.error('Session error:', error);
         // Clear invalid session data if refresh token is invalid
-        if (error.message.includes('Refresh Token') || error.message.includes('JWT')) {
+        if (error.message.toLowerCase().includes('refresh token') || error.message.toLowerCase().includes('jwt')) {
           await supabase.auth.signOut();
           setSession(null);
         }
@@ -611,7 +613,7 @@ export default function App() {
 
       if (err.message === 'Failed to fetch') {
         showToast(t.networkError, 'error');
-      } else if (err.message && (err.message.includes('Refresh Token') || err.message.includes('JWT') || err.message.includes('User not found'))) {
+      } else if (err.message && (err.message.toLowerCase().includes('refresh token') || err.message.toLowerCase().includes('jwt') || err.message.toLowerCase().includes('user not found'))) {
         // Handle invalid token or deleted user by logging out
         await supabase.auth.signOut();
         setSession(null);
@@ -621,7 +623,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [page, searchTerm, selectedGrade, selectedGender, sortBy, t, PAGE_SIZE, isAdmin]);
+  }, [page, searchTerm, selectedGrade, selectedGender, sortBy, t, PAGE_SIZE, isAdmin, session]);
 
   // Realtime Subscription for Multi-User Support
   useEffect(() => {
@@ -712,7 +714,7 @@ export default function App() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (formStep < 4) return;
+    if (formStep < 4 || loading) return;
 
     // Final Validation
     if (!formData.name.trim() || !formData.enrollment_no.trim()) {
@@ -721,6 +723,7 @@ export default function App() {
       return;
     }
 
+    setLoading(true);
     try {
       let data, error;
       
@@ -803,12 +806,14 @@ export default function App() {
         });
       }
     } catch (err: any) {
-      if (err.message && (err.message.includes('Refresh Token') || err.message.includes('JWT') || err.message.includes('User not found'))) {
+      if (err.message && (err.message.toLowerCase().includes('refresh token') || err.message.toLowerCase().includes('jwt') || err.message.toLowerCase().includes('user not found'))) {
         await supabase.auth.signOut();
         setSession(null);
       } else {
         showToast(err.message || t.saveError, 'error');
       }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -875,6 +880,7 @@ export default function App() {
              // that might confuse the admin.
              setIsDeleteModalOpen(false);
              setIsDeletingAll(false);
+             setSelectedStudentsToDelete([]);
              return; 
           }
         } else {
@@ -893,6 +899,36 @@ export default function App() {
         await fetchStudents();
         await fetchStats();
         showToast(t.clearSuccess, 'success');
+      } else if (selectedStudentsToDelete.length > 0) {
+        // Delete selected students
+        if (isAdmin) {
+          // Use backend route for admin
+          for (const id of selectedStudentsToDelete) {
+             const response = await fetch(`/api/admin/students/${id}`, {
+              method: 'DELETE',
+              headers: {
+                ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+              }
+            });
+            if (!response.ok) {
+              throw new Error('Failed to delete student');
+            }
+          }
+        } else {
+          // Regular users can only delete their own records
+          const { error } = await supabase
+            .from('students')
+            .delete()
+            .in('id', selectedStudentsToDelete);
+          if (error) throw error;
+        }
+        
+        setStudents(students.filter(s => !selectedStudentsToDelete.includes(s.id)));
+        setTotalCount(prev => prev - selectedStudentsToDelete.length);
+        setSelectedStudents([]);
+        setSelectedStudentsToDelete([]);
+        showToast(t.deleteSuccess, 'success');
+        fetchStats();
       } else if (studentToDelete) {
         if (isAdmin) {
           const response = await fetch(`/api/admin/students/${studentToDelete}`, {
@@ -921,7 +957,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Error deleting:', err);
-      if (err.message && (err.message.includes('Refresh Token') || err.message.includes('JWT') || err.message.includes('User not found'))) {
+      if (err.message && (err.message.toLowerCase().includes('refresh token') || err.message.toLowerCase().includes('jwt') || err.message.toLowerCase().includes('user not found'))) {
         await supabase.auth.signOut();
         setSession(null);
       } else {
@@ -1079,9 +1115,16 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-3">
                   <button 
-                    onClick={() => {
+                    onClick={async () => {
                       setLoading(true);
-                      fetchStudents();
+                      try {
+                        await fetchStudents();
+                        showToast('List refreshed', 'success');
+                      } catch (err) {
+                        console.error('Refresh failed:', err);
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
                     className="flex items-center gap-2 px-4 py-2.5 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all font-medium shadow-sm active:scale-95"
                     title="Refresh List"
@@ -1089,6 +1132,19 @@ export default function App() {
                     <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                     <span className="hidden sm:inline">Refresh</span>
                   </button>
+                  {isAdmin && selectedStudents.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setSelectedStudentsToDelete(selectedStudents);
+                        setIsDeletingAll(false);
+                        setIsDeleteModalOpen(true);
+                      }}
+                      className="flex items-center gap-2 px-4 py-2.5 text-white bg-rose-600 rounded-xl hover:bg-rose-700 transition-all font-medium shadow-sm active:scale-95"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete Selected ({selectedStudents.length})
+                    </button>
+                  )}
                   {isAdmin && (
                     <button 
                       onClick={exportToCSV}
@@ -1253,9 +1309,25 @@ export default function App() {
                     students.map((student) => (
                       <div key={student.id} className="p-4 space-y-3">
                         <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="font-bold text-slate-900 dark:text-white">{student.name}</h3>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">{t.enrollmentNo} - {student.enrollment_no}</p>
+                          <div className="flex items-center gap-2">
+                            {isAdmin && (
+                              <input
+                                type="checkbox"
+                                checked={selectedStudents.includes(student.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedStudents([...selectedStudents, student.id]);
+                                  } else {
+                                    setSelectedStudents(selectedStudents.filter(id => id !== student.id));
+                                  }
+                                }}
+                                className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                              />
+                            )}
+                            <div>
+                              <h3 className="font-bold text-slate-900 dark:text-white">{student.name}</h3>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">{t.enrollmentNo} - {student.enrollment_no}</p>
+                            </div>
                           </div>
                           <span className="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold rounded-md border border-indigo-100 dark:border-indigo-800">
                             {student.grade || t.na}

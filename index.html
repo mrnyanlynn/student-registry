@@ -45,19 +45,31 @@
         for (let i = 0; i < args.length; i++) {
             const arg = args[i];
             if (typeof arg === 'string') {
-                if (arg.includes('[vite]') || 
-                    arg.includes('Refresh Token') || 
-                    arg.includes('JWT')) {
+                const lowerArg = arg.toLowerCase();
+                if (lowerArg.includes('[vite]') || 
+                    lowerArg.includes('refresh token') || 
+                    lowerArg.includes('jwt')) {
                   return true;
                 }
             }
             if (arg instanceof Error) {
-                if (arg.message && (
-                    arg.message.includes('[vite]') || 
-                    arg.message.includes('Refresh Token') || 
-                    arg.message.includes('JWT')
-                )) {
-                  return true;
+                if (arg.message) {
+                    const lowerMsg = arg.message.toLowerCase();
+                    if (lowerMsg.includes('[vite]') || 
+                        lowerMsg.includes('refresh token') || 
+                        lowerMsg.includes('jwt')) {
+                      return true;
+                    }
+                }
+            }
+            if (arg && typeof arg === 'object' && arg.message) {
+                if (typeof arg.message === 'string') {
+                    const lowerMsg = arg.message.toLowerCase();
+                    if (lowerMsg.includes('[vite]') || 
+                        lowerMsg.includes('refresh token') || 
+                        lowerMsg.includes('jwt')) {
+                      return true;
+                    }
                 }
             }
         }
